@@ -40,6 +40,17 @@ def compute_accel_nBody(R, Masses, nBody):
     return np.concatenate([vel.flatten(), accel.flatten()])
 
 
+# --- MOTEURS RK4 ---
+
+def rk4_step_nBody(R, Masses, nBody, h):
+    """Pas RK4 pour le système complet (N corps)"""
+    k1 = h * compute_accel_nBody(R, Masses, nBody)
+    k2 = h * compute_accel_nBody(R + 0.5 * k1, Masses, nBody)
+    k3 = h * compute_accel_nBody(R + 0.5 * k2, Masses, nBody)
+    k4 = h * compute_accel_nBody(R + k3, Masses, nBody)
+    
+    return R + (k1 + 2*k2 + 2*k3 + k4) / 6
+
 # --- PHYSIQUE : DÉRIVÉE POUR 2 CORPS (SOLEIL FIXE) ---
 def compute_accel_2body(R_state, Masses):
     """
@@ -54,17 +65,6 @@ def compute_accel_2body(R_state, Masses):
     
     return np.concatenate([vel, accel])
 
-# --- MOTEURS RK4 ---
-
-def rk4_step_nBody(R, Masses, nBody, h):
-    """Pas RK4 pour le système complet (N corps)"""
-    k1 = h * compute_accel_nBody(R, Masses, nBody)
-    k2 = h * compute_accel_nBody(R + 0.5 * k1, Masses, nBody)
-    k3 = h * compute_accel_nBody(R + 0.5 * k2, Masses, nBody)
-    k4 = h * compute_accel_nBody(R + k3, Masses, nBody)
-    
-    return R + (k1 + 2*k2 + 2*k3 + k4) / 6
-
 def rk4_step_2body(R, Masses, h):
     """Pas RK4 pour le système simplifié (Soleil fixe)"""
     k1 = h * compute_accel_2body(R, Masses)
@@ -75,6 +75,68 @@ def rk4_step_2body(R, Masses, h):
     return R + (k1 + 2*k2 + 2*k3 + k4) / 6
 
 
+# --- 1. MODÈLE PHYSIQUE : ÉQUATIONS DE LAGRANGE (J2) ---
+def lagrange_j2_derivatives(R, t):
+    """
+    Calcule les dérivées temporelles des éléments orbitaux [a, e, i, OMEGA, w, M].
+    Seuls OMEGA, w et M ont des dérivées non nulles dues à J2.
+    """
+    a, e, i, OMEGA, w, M = R
+
+    n = np.sqrt(Mu_Terre_km / a**3) # Moyen mouvement
+
+    # Pas de variations séculaires pour a, e, i au 1er ordre
+    dadt = 0
+    dedt = 0
+    didt = 0
+    
+    # Précession du nœud ascendant (Rotation du plan orbital)
+    dOMEGAdt = - (3 * n * J2 * (Rt**2) * np.cos(i)) / (2 * a**2 * (1 - e**2)**2)
+    
+    # Rotation de l'argument du périgée (Rotation de l'ellipse dans son plan)
+    dwdt = (3 * n * J2 * Rt**2 * (5 * np.cos(i)**2 - 1)) / (4 * a**2 * (1 - e**2)**2)
+    
+    # Évolution de l'anomalie moyenne (Vitesse orbitale + correction J2)
+    dMdt = n + (3 * n * J2 * Rt**2 * (3 * np.cos(i)**2 - 1)) / (4 * a**2 * (1 - e**2)**(1.5))
+
+    return np.array([dadt, dedt, didt, dOMEGAdt, dwdt, dMdt])
+
+# --- 2. INTÉGRATEUR : RUNGE-KUTTA 4 ---
+def rk4_step_j2(R, t, h):
+    k1 = h * lagrange_j2_derivatives(R, t)
+    k2 = h * lagrange_j2_derivatives(R + 0.5 * k1, t + 0.5 * h)
+    k3 = h * lagrange_j2_derivatives(R + 0.5 * k2, t + 0.5 * h)
+    k4 = h * lagrange_j2_derivatives(R + k3, t + h)
+    return R + (k1 + 2*k2 + 2*k3 + k4) / 6
+
+# --- 3. CONVERSION : KEPLER -> CARTÉSIEN ---
+def keplerian_elements_to_cartesian(R):
+    """Convertit [a,e,i,Omega,w,M] en vecteur position [x,y,z] ECI."""
+    a, e, i, OMEGA, w, M = R
+
+    # Résolution de l'équation de Kepler (Newton-Raphson)
+    E = M
+    for _ in range(10): 
+        E = E - (E - e * np.sin(E) - M) / (1 - e * np.cos(E))
+
+    # Anomalie vraie
+    v = 2 * np.arctan(np.sqrt((1 + e) / (1 - e)) * np.tan(E / 2))
+
+    # Coordonnées dans le plan orbital
+    r = a * (1 - e**2) / (1 + e * np.cos(v))
+    vec_orb = np.array([r * np.cos(v), r * np.sin(v), 0])
+    
+    # Matrice de rotation Plan -> ECI
+    co, so = np.cos(OMEGA), np.sin(OMEGA)
+    ci, si = np.cos(i), np.sin(i)
+    cw, sw = np.cos(w), np.sin(w)
+
+    R_mat = np.array([
+        [co*cw - so*sw*ci, -co*sw - so*cw*ci,  so*si],
+        [so*cw + co*sw*ci, -so*sw + co*cw*ci, -co*si],
+        [sw*si,             cw*si,             ci]
+    ])
+    return R_mat @ vec_orb
 
 
 

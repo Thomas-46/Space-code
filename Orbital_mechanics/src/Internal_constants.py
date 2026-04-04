@@ -20,6 +20,9 @@ Mu_Lune = 4.9048695 * (10**12)
 PI = 3.141592653589793
 TWO_PI = 2 *PI
 
+J2 = 1.08263e-3
+Rt = 6378.137  # Rayon terrestre (km)
+Mu_Terre_km = 398600.44 # Paramètre grav. (km^3/s^2)
 
 # ----------------------------------------------------------
 # CONSTANTES PHYSIQUES NORMALISÉES
