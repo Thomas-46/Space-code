@@ -124,19 +124,29 @@ def keplerian_elements_to_cartesian(R):
 
     # Coordonnées dans le plan orbital
     r = a * (1 - e**2) / (1 + e * np.cos(v))
-    vec_orb = np.array([r * np.cos(v), r * np.sin(v), 0])
+
+    # vérifie que ton vecteur orbital est bien :
+    x_orb = r * np.cos(v)
+    y_orb = r * np.sin(v)
+    z_orb = 0
     
     # Matrice de rotation Plan -> ECI
     co, so = np.cos(OMEGA), np.sin(OMEGA)
     ci, si = np.cos(i), np.sin(i)
     cw, sw = np.cos(w), np.sin(w)
-
     R_mat = np.array([
         [co*cw - so*sw*ci, -co*sw - so*cw*ci,  so*si],
         [so*cw + co*sw*ci, -so*sw + co*cw*ci, -co*si],
-        [sw*si,             cw*si,             ci]
+        [sw*si,            cw*si,             ci]
     ])
-    return R_mat @ vec_orb
+
+
+    # Calcul direct (plus robuste que la matrice array) :
+    X = x_orb * (co*cw - so*sw*ci) - y_orb * (co*sw + so*cw*ci)
+    Y = x_orb * (so*cw + co*sw*ci) - y_orb * (so*sw - co*cw*ci)
+    Z = x_orb * (sw*si)            + y_orb * (cw*si)
+    
+    return np.array([X, Y, Z])
 
 
 
